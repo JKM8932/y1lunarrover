@@ -1,4 +1,4 @@
-  We observed that the infrared pulses came from the following bulbs on the back of the PCB in the rock:
+    We observed that the infrared pulses came from the following bulbs on the back of the PCB in the rock:
 <img width="649" height="402" alt="Screenshot 2026-05-19 at 3 54 23 PM" src="https://github.com/user-attachments/assets/39e82363-7e04-4e0f-96c0-7caaec7ba147" />
 
   The infrared pulses that these bulbs emit travel through a tiny hole made on the outer surface of the rock, which is where we are supposed to place the infrared detector above of:  
