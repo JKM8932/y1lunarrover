@@ -3,73 +3,78 @@
 #include "hardware/adc.h"
 
 // Configuration
-#define ADC_PIN 26          // GP26 is ADC0
-#define ADC_NUM 0           // ADC0 channel
-#define FILTER_SIZE 20      // Number of samples for the moving average filter
-#define THRESHOLD 50        // Hysteresis threshold to prevent flickering near center
+#define ADC_PIN 26          // GP26 (ADC0)
+#define ADC_NUM 0           
+#define FILTER_SIZE 7      // Size of the moving average filter buffer
+#define THRESHOLD 25        // Trigger sensitivity window
 
-// Global variables for the moving average filter
-uint16_t readings[FILTER_SIZE];
-int read_index = 0;
-uint32_t total = 0;
+static uint16_t readings[FILTER_SIZE];
+static int read_index = 0;
+static uint32_t total = 0;
+static uint16_t baseline = 0;
 
-// Function to smooth out rover vibrations
-uint16_t get_smoothed_adc() {
-    // Subtract the oldest reading
+// Helper function to maintain the moving average filter
+uint16_t get_filtered_reading() {
     total -= readings[read_index];
-    // Read the newest value from the sensor
     readings[read_index] = adc_read();
-    // Add the newest value to the total
     total += readings[read_index];
-    // Advance to the next position in the array
     read_index = (read_index + 1) % FILTER_SIZE;
     
-    // Return the average
     return total / FILTER_SIZE;
 }
 
+// Single main entry point that the Pico SDK looks for
 int main() {
+    // Initialize standard I/O (USB serial communication)
     stdio_init_all();
-    
-    // Initialize ADC hardware
+
+    // 5-second countdown to let you open your Serial Monitor
+    for (int i = 10; i > 0; i--) {
+        printf("[MAG] Starting calibration in %d seconds...\n", i);
+        sleep_ms(1000);
+    }
+
+    // Initialize the Pico ADC hardware
     adc_init();
     adc_gpio_init(ADC_PIN);
     adc_select_input(ADC_NUM);
-    
-    // Initialize the filter array with baseline readings
+
+    // Warm up the moving average buffer with live data
     for (int i = 0; i < FILTER_SIZE; i++) {
-        readings[i] = adc_read();
-        total += readings[i];
+        uint16_t val = adc_read();
+        readings[i] = val;
+        total += val;
         sleep_ms(5);
     }
-    
-    // Let the system settle and capture the quiescent (idle) center value
-    printf("Calibrating baseline... Keep magnet away.\n");
-    sleep_ms(1000);
-    
-    uint16_t baseline = 0;
-    for(int i = 0; i < 50; i++) {
-        baseline += get_smoothed_adc();
+
+    // Dynamic Calibration: Sample the voltage divider 100 times to set "zero"
+    printf("[MAG] Calibrating baseline... Keep magnets away from sensor!\n");
+    uint32_t sum = 0;
+    for(int i = 0; i < 1000; i++) {
+        sum += get_filtered_reading();
         sleep_ms(10);
     }
-    baseline /= 50;
-    printf("Baseline calibrated at ADC value: %d\n", baseline);
     
+    // Set our custom center reference point
+    baseline = sum / 1000;
+    printf("[MAG] Calibration successful! Base center ADC level set to: %d\n", baseline);
+
+    // Primary execution loop
     while (true) {
-        uint16_t current_val = get_smoothed_adc();
-        
-        // Determine direction based on deviation from the resting baseline
-        if (current_val > (baseline + THRESHOLD)) {
-            printf("Direction: UP   (ADC: %d)\n", current_val);
-        } 
-        else if (current_val < (baseline - THRESHOLD)) {
-            printf("Direction: DOWN (ADC: %d)\n", current_val);
-        } 
-        else {
-            printf("Direction: IDLE (ADC: %d)\n", current_val);
+        uint16_t current_avg = get_filtered_reading();
+
+        // Evaluate live data against the dynamic baseline + safety threshold
+        if (current_avg > (baseline + THRESHOLD)) {
+            printf("[MAG] Direction: UP   (ADC: %d | Base: %d)\n", current_avg, baseline);
+        } else if (current_avg < (baseline - THRESHOLD)) {
+            printf("[MAG] Direction: DOWN (ADC: %d | Base: %d)\n", current_avg, baseline);
+        } else {
+            printf("[MAG] Direction: IDLE (ADC: %d | Base: %d)\n", current_avg, baseline);
         }
-        
-        // Loop delay (adjust based on how fast your rover needs to react)
-        sleep_ms(50); 
+
+        // Loop pause interval
+        sleep_ms(1000);
     }
+
+    return 0;
 }
