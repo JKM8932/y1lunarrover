@@ -4,7 +4,6 @@
 #include "hardware/pwm.h"
 #include "hardware/gpio.h"
 
-// --- UPDATED: Pins shifted 1 value lower ---
 #define LEFT_ENABLE  14  // Left speed (PWM)  -> Slice 7, Chan A
 #define LEFT_DIR     15  // Left dir (GPIO)   -> (Sharing Slice 7, but used as pure GPIO)
 #define RIGHT_ENABLE 16  // Right speed (PWM) -> Slice 0, Chan A
