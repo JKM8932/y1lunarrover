@@ -1,11 +1,14 @@
 from machine import ADC
 import time
 
+#ADC connected to GP26
 adc = ADC(26)
 
+#calibration settings
 CALIBRATION_TIME = 5
 SAMPLES = 50
 
+#Detection thresholds above the calibrated baseline
 WEAK_MARGIN = 500
 DETECT_MARGIN = 1200
 
@@ -19,6 +22,8 @@ def read_adc_average():
     spread = max(readings) - min(readings)
     return avg, spread
 
+#automatic calibration
+#assumes no rock/ultrasonic signal is present
 print("Calibrating... keep rock OFF/away")
 
 values = []
@@ -40,6 +45,8 @@ print("Weak threshold:", weak_threshold)
 print("Detect threshold:", detect_threshold)
 print("----------------------")
 
+#detection loop
+#continuously detect and classify ultraasonic signal strength
 while True:
     avg, spread = read_adc_average()
     voltage = avg * 3.3 / 65535
