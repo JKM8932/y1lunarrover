@@ -1,0 +1,5 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "Motor_Driver")(type "KiCad")(uri "${KIPRJMOD}/KiCADv6/2026-05-28_13-00-24.kicad_sym")(options "")(descr ""))
+  (lib (name "MCP6293")(type "KiCad")(uri "/home/arjun/Documents/ImperialFirstYear/SummerProject/FullPCB/MCP6292-E_SN.kicad_sym")(options "")(descr ""))
+)
