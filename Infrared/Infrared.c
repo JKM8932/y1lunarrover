@@ -8,7 +8,6 @@
 #include "hardware/gpio.h"
 
 // project modules
-// our modules
 #include "Infrared.h"
 
 // configuration
