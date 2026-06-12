@@ -1,10 +1,13 @@
+// standard libraries
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 
+// pico libraries
 #include "pico/stdlib.h"
 #include "hardware/adc.h"
 
+// project modules
 #include "Ultrasound.h"
 
 // --- Configuration ---
