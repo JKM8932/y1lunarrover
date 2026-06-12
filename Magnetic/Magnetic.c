@@ -7,7 +7,7 @@
 #include "pico/stdlib.h"
 #include "hardware/adc.h"
 
-// project modules
+// project module
 #include "Magnetic.h"
 
 // configuration
@@ -17,7 +17,7 @@
 #define FILTER_SIZE 10
 #define THRESHOLD 5
 #define CONFIRM_COUNT 7
-#define IDLE_CONFIRM_COUNT 7
+#define IDLE_CONFIRM_COUNT 10
 
 #define CALIBRATION_SAMPLES 600
 #define CALIBRATION_DELAY_MS 5
@@ -34,8 +34,8 @@ static int up_count = 0;
 static int down_count = 0;
 static int idle_count = 0;
 
-// moving-average filter to reduce ADC noise before thresholding.
-static uint16_t get_filtered_reading(void) { 
+// uses an updating running sum and average to reduce the influence of noise at ADC port
+static uint16_t get_filtered_reading(void) {
     total -= readings[read_index];
     readings[read_index] = adc_read();
     total += readings[read_index];
@@ -43,7 +43,7 @@ static uint16_t get_filtered_reading(void) {
     return total / FILTER_SIZE;
 }
 
-// Calibrate the no-magnet baseline ADC value at startup.
+// calibration, runs on startup when there is no magnet nearby, sets baseline ADC value
 static void magnetic_calibrate(void) {
     printf("[MAG] Calibrating baseline... Keep magnets away from sensor!\n");
     adc_select_input(MAG_ADC_NUM);
@@ -86,7 +86,7 @@ void magnetic_init(void) {
     magnetic_calibrate();
 }
 
-// start a new magnetic measurement after calibration has completed.
+// does not start until calibration is started and finished
 void magnetic_start_detection(void) {
     if (!magnetic_calibrated) {
         printf("[MAG] Not calibrated yet\n");
@@ -165,5 +165,48 @@ int magnetic_poll(void) {
     }
 
     // Still collecting evidence. No final result yet.
+    return 0;
+}
+
+int main(void) {
+
+    stdio_init_all();
+
+    // Give USB serial time to connect
+    sleep_ms(2000);
+
+    printf("\n=== Magnetic Sensor Test ===\n");
+    printf("Keep magnet away during calibration.\n");
+
+    magnetic_init();
+
+    while (true) {
+        printf("\nPress/restart command: starting magnetic detection...\n");
+        magnetic_start_detection();
+
+        int result = 0;
+
+        while (result == 0) {
+            result = magnetic_poll();
+            sleep_ms(50);
+        }
+
+        if (result == 3) {
+            printf("FINAL RESULT: UP\n");
+        }
+        else if (result == 1) {
+            printf("FINAL RESULT: DOWN\n");
+        }
+        else if (result == 2) {
+            printf("FINAL RESULT: IDLE / NO MAGNET\n");
+        }
+        else {
+            printf("FINAL RESULT: UNKNOWN CODE %d\n", result);
+        }
+
+        printf("Waiting 2 seconds before next test...\n");
+        sleep_ms(2000);
+    }
+
     return 0;
 }
