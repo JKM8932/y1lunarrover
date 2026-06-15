@@ -1,23 +1,18 @@
-// standard libraries
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 
-// pico libraries
 #include "pico/stdlib.h"
 #include "hardware/adc.h"
 
-// project module
-#include "Magnetic.h"
-
-// configuration
+// Configuration
 #define MAG_ADC_PIN 27
 #define MAG_ADC_NUM 1
 
 #define FILTER_SIZE 10
 #define THRESHOLD 5
 #define CONFIRM_COUNT 7
-#define IDLE_CONFIRM_COUNT 10
+#define IDLE_CONFIRM_COUNT 7
 
 #define CALIBRATION_SAMPLES 600
 #define CALIBRATION_DELAY_MS 5
@@ -34,7 +29,6 @@ static int up_count = 0;
 static int down_count = 0;
 static int idle_count = 0;
 
-// uses an updating running sum and average to reduce the influence of noise at ADC port
 static uint16_t get_filtered_reading(void) {
     total -= readings[read_index];
     readings[read_index] = adc_read();
@@ -43,10 +37,29 @@ static uint16_t get_filtered_reading(void) {
     return total / FILTER_SIZE;
 }
 
-// calibration, runs on startup when there is no magnet nearby, sets baseline ADC value
+// Clears and refills the moving average buffer using current ADC readings
+static void reset_filter_buffer(void) {
+    adc_select_input(MAG_ADC_NUM);
+
+    read_index = 0;
+    total = 0;
+
+    for (int i = 0; i < FILTER_SIZE; i++) {
+        uint16_t val = adc_read();
+        readings[i] = val;
+        total += val;
+        sleep_ms(5);
+    }
+}
+
 static void magnetic_calibrate(void) {
     printf("[MAG] Calibrating baseline... Keep magnets away from sensor!\n");
+
     adc_select_input(MAG_ADC_NUM);
+
+    // Important: remove old readings from previous detection/calibration
+    reset_filter_buffer();
+
     uint32_t sum = 0;
 
     for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
@@ -60,38 +73,29 @@ static void magnetic_calibrate(void) {
     printf("[MAG] Calibration successful! Base ADC level: %u\n", baseline);
 }
 
-// pin setup
 void magnetic_init(void) {
     adc_init();
     adc_gpio_init(MAG_ADC_PIN);
     adc_select_input(MAG_ADC_NUM);
 
-    read_index = 0;
-    total = 0;
-
-    for (int i = 0; i < FILTER_SIZE; i++) {
-        uint16_t val = adc_read();
-        readings[i] = val;
-        total += val;
-        sleep_ms(5);
-    }
+    reset_filter_buffer();
 
     magnetic_detection_active = false;
     magnetic_calibrated = false;
+
     up_count = 0;
     down_count = 0;
+    idle_count = 0;
 
     printf("[MAG] Magnetic engine initialized\n");
 
-    magnetic_calibrate();
+    // Do NOT calibrate here anymore.
+    // Calibration now happens every time magnetic_start_detection() is called.
 }
 
-// does not start until calibration is started and finished
 void magnetic_start_detection(void) {
-    if (!magnetic_calibrated) {
-        printf("[MAG] Not calibrated yet\n");
-        return;
-    }
+    // Recalibrate every time before detection starts
+    magnetic_calibrate();
 
     up_count = 0;
     down_count = 0;
@@ -115,23 +119,23 @@ int magnetic_poll(void) {
     printf("[MAG] ADC: %u | Base: %u | Delta: %d\n",
            current_avg, baseline, delta);
 
-    if (delta > THRESHOLD) { // if sensor reading is above baseline by threshold amount or more, consider instance as Up
+    if (delta > THRESHOLD) {
         up_count++;
         down_count = 0;
         idle_count = 0;
     }
-    else if (delta < -THRESHOLD) { // if sensor reading is below baseline by threshold amount or more, consider instance as Down
+    else if (delta < -THRESHOLD) {
         down_count++;
         up_count = 0;
         idle_count = 0;
     }
-    else { // if unable to cross thresholds (too far or no magnet), consider instance as IDLE (no magnet near)
+    else {
         idle_count++;
         up_count = 0;
         down_count = 0;
     }
 
-    if (up_count >= CONFIRM_COUNT) { // confirm Up once Up instance has been recorded enough times
+    if (up_count >= CONFIRM_COUNT) {
         up_count = 0;
         down_count = 0;
         idle_count = 0;
@@ -142,7 +146,7 @@ int magnetic_poll(void) {
         return 3;
     }
 
-    if (down_count >= CONFIRM_COUNT) { // confirm Down once Down instance has been recorded enough times
+    if (down_count >= CONFIRM_COUNT) {
         up_count = 0;
         down_count = 0;
         idle_count = 0;
@@ -153,7 +157,7 @@ int magnetic_poll(void) {
         return 1;
     }
 
-    if (idle_count >= IDLE_CONFIRM_COUNT) { // confirm IDLE once IDLE instance has been recorded enough times
+    if (idle_count >= IDLE_CONFIRM_COUNT) {
         up_count = 0;
         down_count = 0;
         idle_count = 0;
@@ -162,50 +166,6 @@ int magnetic_poll(void) {
 
         printf("[MAG] Direction: IDLE\n");
         return 2;
-    }
-
-    // Still collecting evidence. No final result yet.
-    return 0;
-}
-
-int main(void) {
-
-    stdio_init_all();
-
-    // Give USB serial time to connect
-    sleep_ms(2000);
-
-    printf("\n=== Magnetic Sensor Test ===\n");
-    printf("Keep magnet away during calibration.\n");
-
-    magnetic_init();
-
-    while (true) {
-        printf("\nPress/restart command: starting magnetic detection...\n");
-        magnetic_start_detection();
-
-        int result = 0;
-
-        while (result == 0) {
-            result = magnetic_poll();
-            sleep_ms(50);
-        }
-
-        if (result == 3) {
-            printf("FINAL RESULT: UP\n");
-        }
-        else if (result == 1) {
-            printf("FINAL RESULT: DOWN\n");
-        }
-        else if (result == 2) {
-            printf("FINAL RESULT: IDLE / NO MAGNET\n");
-        }
-        else {
-            printf("FINAL RESULT: UNKNOWN CODE %d\n", result);
-        }
-
-        printf("Waiting 2 seconds before next test...\n");
-        sleep_ms(2000);
     }
 
     return 0;
