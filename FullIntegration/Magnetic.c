@@ -5,16 +5,16 @@
 #include "pico/stdlib.h"
 #include "hardware/adc.h"
 
-// Configuration
+// setting up the sensor
 #define MAG_ADC_PIN 27
 #define MAG_ADC_NUM 1
 
 #define FILTER_SIZE 10
-#define THRESHOLD 5
-#define CONFIRM_COUNT 7
-#define IDLE_CONFIRM_COUNT 7
+#define THRESHOLD 40
+#define CONFIRM_COUNT 5
+#define IDLE_CONFIRM_COUNT 50
 
-#define CALIBRATION_SAMPLES 600
+#define CALIBRATION_SAMPLES 400
 #define CALIBRATION_DELAY_MS 5
 
 static uint16_t readings[FILTER_SIZE];
@@ -29,6 +29,8 @@ static int up_count = 0;
 static int down_count = 0;
 static int idle_count = 0;
 
+// moving average filter
+// takes sum of last n readings and averages them
 static uint16_t get_filtered_reading(void) {
     total -= readings[read_index];
     readings[read_index] = adc_read();
@@ -37,7 +39,7 @@ static uint16_t get_filtered_reading(void) {
     return total / FILTER_SIZE;
 }
 
-// Clears and refills the moving average buffer using current ADC readings
+// clears and refills the moving average buffer using current ADC readings
 static void reset_filter_buffer(void) {
     adc_select_input(MAG_ADC_NUM);
 
@@ -52,12 +54,13 @@ static void reset_filter_buffer(void) {
     }
 }
 
+// calibrates sensor to establish baseline
+// as the baseline voltage might change based on the environment
 static void magnetic_calibrate(void) {
     printf("[MAG] Calibrating baseline... Keep magnets away from sensor!\n");
 
     adc_select_input(MAG_ADC_NUM);
 
-    // Important: remove old readings from previous detection/calibration
     reset_filter_buffer();
 
     uint32_t sum = 0;
@@ -73,6 +76,7 @@ static void magnetic_calibrate(void) {
     printf("[MAG] Calibration successful! Base ADC level: %u\n", baseline);
 }
 
+// initialisation - resets all counters and the buffer
 void magnetic_init(void) {
     adc_init();
     adc_gpio_init(MAG_ADC_PIN);
@@ -88,11 +92,9 @@ void magnetic_init(void) {
     idle_count = 0;
 
     printf("[MAG] Magnetic engine initialized\n");
-
-    // Do NOT calibrate here anymore.
-    // Calibration now happens every time magnetic_start_detection() is called.
 }
 
+// runs when the button is pressed
 void magnetic_start_detection(void) {
     // Recalibrate every time before detection starts
     magnetic_calibrate();
@@ -119,12 +121,12 @@ int magnetic_poll(void) {
     printf("[MAG] ADC: %u | Base: %u | Delta: %d\n",
            current_avg, baseline, delta);
 
-    if (delta > THRESHOLD) {
+    if (delta < THRESHOLD) { // records an UP if delta < threshold (inverting amplifier)
         up_count++;
         down_count = 0;
         idle_count = 0;
     }
-    else if (delta < -THRESHOLD) {
+    else if (delta > -THRESHOLD) { // records DOWN if delta > threshold
         down_count++;
         up_count = 0;
         idle_count = 0;
